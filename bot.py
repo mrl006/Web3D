@@ -11,7 +11,7 @@ from telegram.ext import (
     filters
 )
 
-BOT_TOKEN = "8077295783:AAEDLMX9I_FqBV_yKPtfrAiB7xEHuuzdLks"
+BOT_TOKEN = "8077295783:AAEDLMX9I_FqBV_yKPtfrAiB7xEHuuzdLks"  # Replace this with your real token
 USER_DB = "active_users.json"
 GROUP_DB = "groups.json"
 
@@ -42,32 +42,13 @@ def save_group(chat_id):
             json.dump(data, f)
 
 # ---------------------------
-# Commands
+# Commands & Handlers
 # ---------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Hello! I'm Web3D Tag Member Bot.\nUse #admin or #all in your group to tag people.\nType /promo to get project links."
     )
-
-async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.message
-    if not message or not message.from_user:
-        return
-    chat_id = str(message.chat.id)
-    user_id = str(message.from_user.id)
-    name = message.from_user.first_name
-
-    # Save user
-    data = load_users()
-    if chat_id not in data:
-        data[chat_id] = {}
-    data[chat_id][user_id] = name
-    save_users(data)
-
-    # Save group
-    save_group(chat_id)
-    print(f"[LOG] Tracked user {name} ({user_id}) in group {chat_id}")
 
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = update.chat_member
@@ -80,15 +61,27 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=f"👋 Welcome {user.first_name} to Web3D!\nVisit https://web3decision.com to explore."
         )
 
-async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
-    if not message or not message.text:
+    if not message or not message.from_user or not message.text:
         return
 
+    # Track user
     chat_id = str(message.chat.id)
+    user_id = str(message.from_user.id)
+    name = message.from_user.first_name
+
+    data = load_users()
+    if chat_id not in data:
+        data[chat_id] = {}
+    data[chat_id][user_id] = name
+    save_users(data)
+    save_group(chat_id)
+    print(f"[LOG] Tracked user {name} ({user_id}) in group {chat_id}")
+
+    # Mention Logic
     text = message.text.lower()
     print(f"[LOG] Received in {chat_id}: {text}")
-    data = load_users()
 
     if "#admin" in text:
         admins = await context.bot.get_chat_administrators(chat_id)
@@ -142,8 +135,8 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def gbroadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     groups = load_groups()
-
     is_admin = False
+
     for group_id in groups:
         try:
             admins = await context.bot.get_chat_administrators(group_id)
@@ -194,13 +187,13 @@ async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 print("✅ Bot started... waiting for messages.")
+
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("broadcast", broadcast))
 app.add_handler(CommandHandler("gbroadcast", gbroadcast))
 app.add_handler(CommandHandler("botstats", stats))
 app.add_handler(CommandHandler("promo", promo))
-app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), track_users))
-app.add_handler(MessageHandler(filters.ALL, mention_handler))  # ✅ Key fix here
+app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_all_messages))
 app.add_handler(ChatMemberHandler(welcome, ChatMemberHandler.CHAT_MEMBER))
 
 app.run_polling()
