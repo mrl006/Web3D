@@ -79,6 +79,9 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
+    if not message or not message.text:
+        return
+
     chat_id = str(message.chat.id)
     text = message.text.lower()
     data = load_users()
@@ -192,7 +195,7 @@ app.add_handler(CommandHandler("gbroadcast", gbroadcast))
 app.add_handler(CommandHandler("botstats", stats))
 app.add_handler(CommandHandler("promo", promo))
 app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), track_users))
-app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), mention_handler))
+app.add_handler(MessageHandler(filters.ALL, mention_handler))  # ✅ Fixed filter here
 app.add_handler(ChatMemberHandler(welcome, ChatMemberHandler.CHAT_MEMBER))
 
 app.run_polling()
