@@ -178,7 +178,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("Visit Website", url="https://web3decision.com")],
-        [InlineKeyboardButton("DM Admin", url="https://t.me/youradmin")]
+        [InlineKeyboardButton("DM Admin", url="https://t.me/web3decisiontr")]
     ]
     await update.message.reply_text("🔥 Check out Web3D now!", reply_markup=InlineKeyboardMarkup(keyboard))
 
