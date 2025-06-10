@@ -52,6 +52,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
+    if not message or not message.from_user:
+        return
     chat_id = str(message.chat.id)
     user_id = str(message.from_user.id)
     name = message.from_user.first_name
@@ -65,6 +67,7 @@ async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Save group
     save_group(chat_id)
+    print(f"[LOG] Tracked user {name} ({user_id}) in group {chat_id}")
 
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = update.chat_member
@@ -84,6 +87,7 @@ async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = str(message.chat.id)
     text = message.text.lower()
+    print(f"[LOG] Received in {chat_id}: {text}")
     data = load_users()
 
     if "#admin" in text:
@@ -189,13 +193,14 @@ async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # App Setup
 # ---------------------------
 app = ApplicationBuilder().token(BOT_TOKEN).build()
+print("✅ Bot started... waiting for messages.")
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("broadcast", broadcast))
 app.add_handler(CommandHandler("gbroadcast", gbroadcast))
 app.add_handler(CommandHandler("botstats", stats))
 app.add_handler(CommandHandler("promo", promo))
 app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), track_users))
-app.add_handler(MessageHandler(filters.ALL, mention_handler))  # ✅ Fixed filter here
+app.add_handler(MessageHandler(filters.ALL, mention_handler))  # ✅ Key fix here
 app.add_handler(ChatMemberHandler(welcome, ChatMemberHandler.CHAT_MEMBER))
 
 app.run_polling()
