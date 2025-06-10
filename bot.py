@@ -13,7 +13,11 @@ from telegram.ext import (
 
 BOT_TOKEN = "8077295783:AAEDLMX9I_FqBV_yKPtfrAiB7xEHuuzdLks"
 USER_DB = "active_users.json"
+GROUP_DB = "groups.json"
 
+# ---------------------------
+# Utilities
+# ---------------------------
 def load_users():
     if not os.path.exists(USER_DB):
         return {}
@@ -24,7 +28,23 @@ def save_users(data):
     with open(USER_DB, "w") as f:
         json.dump(data, f)
 
-# ✅ /start command
+def load_groups():
+    if not os.path.exists(GROUP_DB):
+        return []
+    with open(GROUP_DB, "r") as f:
+        return json.load(f)
+
+def save_group(chat_id):
+    data = load_groups()
+    if chat_id not in data:
+        data.append(chat_id)
+        with open(GROUP_DB, "w") as f:
+            json.dump(data, f)
+
+# ---------------------------
+# Commands
+# ---------------------------
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Hello! I'm Web3D Tag Member Bot.\nUse #admin or #all in your group to tag people.\nType /promo to get project links."
@@ -36,20 +56,25 @@ async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(message.from_user.id)
     name = message.from_user.first_name
 
+    # Save user
     data = load_users()
     if chat_id not in data:
         data[chat_id] = {}
     data[chat_id][user_id] = name
     save_users(data)
 
+    # Save group
+    save_group(chat_id)
+
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = update.chat_member
     if member.new_chat_member.status == "member":
         chat_id = member.chat.id
         user = member.new_chat_member.user
+        save_group(chat_id)
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"👋 Welcome {user.first_name} to Web3D!\nVisit https://web3decision.com to explore.",
+            text=f"👋 Welcome {user.first_name} to Web3D!\nVisit https://web3decision.com to explore."
         )
 
 async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -107,6 +132,43 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("No users available to broadcast.")
 
+async def gbroadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    groups = load_groups()
+
+    is_admin = False
+    for group_id in groups:
+        try:
+            admins = await context.bot.get_chat_administrators(group_id)
+            if any(admin.user.id == user_id for admin in admins):
+                is_admin = True
+                break
+        except:
+            continue
+
+    if not is_admin:
+        await update.message.reply_text("❌ You must be an admin in at least one group that added me.")
+        return
+
+    message_text = update.message.text.replace("/gbroadcast", "").strip()
+
+    if update.message.photo:
+        photo = update.message.photo[-1].file_id
+        caption = update.message.caption or message_text or "📢"
+        for group_id in groups:
+            try:
+                await context.bot.send_photo(chat_id=group_id, photo=photo, caption=caption)
+            except:
+                pass
+    elif message_text:
+        for group_id in groups:
+            try:
+                await context.bot.send_message(chat_id=group_id, text=message_text)
+            except:
+                pass
+    else:
+        await update.message.reply_text("Usage: /gbroadcast Your message or photo")
+
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.message.chat.id)
     data = load_users()
@@ -120,14 +182,17 @@ async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text("🔥 Check out Web3D now!", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# 🔧 Set up the bot
+# ---------------------------
+# App Setup
+# ---------------------------
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), track_users))
-app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), mention_handler))
 app.add_handler(CommandHandler("broadcast", broadcast))
+app.add_handler(CommandHandler("gbroadcast", gbroadcast))
 app.add_handler(CommandHandler("botstats", stats))
 app.add_handler(CommandHandler("promo", promo))
+app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), track_users))
+app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), mention_handler))
 app.add_handler(ChatMemberHandler(welcome, ChatMemberHandler.CHAT_MEMBER))
 
 app.run_polling()
