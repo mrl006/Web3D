@@ -11,7 +11,7 @@ from telegram.ext import (
     filters
 )
 
-BOT_TOKEN = "8077295783:AAEDLMX9I_FqBV_yKPtfrAiB7xEHuuzdLks"  # Replace this with your real token
+BOT_TOKEN = "8077295783:AAEDLMX9I_FqBV_yKPtfrAiB7xEHuuzdLks"
 USER_DB = "active_users.json"
 GROUP_DB = "groups.json"
 
@@ -42,7 +42,7 @@ def save_group(chat_id):
             json.dump(data, f)
 
 # ---------------------------
-# Commands & Handlers
+# Commands
 # ---------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -50,38 +50,65 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 Hello! I'm Web3D Tag Member Bot.\nUse #admin or #all in your group to tag people.\nType /promo to get project links."
     )
 
+async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message
+    if not message or not message.from_user:
+        return
+    chat_id = str(message.chat.id)
+    user_id = str(message.from_user.id)
+    name = message.from_user.first_name
+    username = message.from_user.username or ""
+
+    # Save user
+    data = load_users()
+    if chat_id not in data:
+        data[chat_id] = {}
+    data[chat_id][user_id] = {"name": name, "username": username}
+    save_users(data)
+
+    # Save group
+    save_group(chat_id)
+
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = update.chat_member
     if member.new_chat_member.status == "member":
         chat_id = member.chat.id
         user = member.new_chat_member.user
         save_group(chat_id)
+        data = load_users()
+        if str(chat_id) not in data:
+            data[str(chat_id)] = {}
+        data[str(chat_id)][str(user.id)] = {
+            "name": user.first_name,
+            "username": user.username or ""
+        }
+        save_users(data)
         await context.bot.send_message(
             chat_id=chat_id,
             text=f"👋 Welcome {user.first_name} to Web3D!\nVisit https://web3decision.com to explore."
         )
 
-async def handle_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def register_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    try:
+        admins = await context.bot.get_chat_administrators(chat_id)
+        if user_id not in [admin.user.id for admin in admins]:
+            return await update.message.reply_text("❌ You must be admin to use this.")
+
+        members = await context.bot.get_chat_members_count(chat_id)
+        await update.message.reply_text(f"Bot will register active members after they message. Cannot fetch full list via API.")
+    except:
+        await update.message.reply_text("⚠️ Bot needs admin rights to scan members.")
+
+async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
-    if not message or not message.from_user or not message.text:
+    if not message or not message.text:
         return
 
-    # Track user
     chat_id = str(message.chat.id)
-    user_id = str(message.from_user.id)
-    name = message.from_user.first_name
-
-    data = load_users()
-    if chat_id not in data:
-        data[chat_id] = {}
-    data[chat_id][user_id] = name
-    save_users(data)
-    save_group(chat_id)
-    print(f"[LOG] Tracked user {name} ({user_id}) in group {chat_id}")
-
-    # Mention Logic
     text = message.text.lower()
-    print(f"[LOG] Received in {chat_id}: {text}")
+    data = load_users()
 
     if "#admin" in text:
         admins = await context.bot.get_chat_administrators(chat_id)
@@ -92,88 +119,24 @@ async def handle_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE
         await send_in_batches(mention_list, message)
 
     elif "#all" in text:
+        mention_list = []
         if chat_id in data:
-            mention_list = [
-                f"[{name}](tg://user?id={uid})" for uid, name in data[chat_id].items()
-            ]
+            for uid, info in data[chat_id].items():
+                name = info.get("name", "User")
+                username = info.get("username")
+                if username:
+                    mention_list.append(f"@{username}")
+                else:
+                    mention_list.append(f"[{name}](tg://user?id={uid})")
+        if mention_list:
             await send_in_batches(mention_list, message)
         else:
-            await message.reply_text("No active users to tag yet.")
+            await message.reply_text("No users to tag yet.")
 
 async def send_in_batches(mentions, message):
     for i in range(0, len(mentions), 10):
         batch = mentions[i:i+10]
         await message.reply_text(" ".join(batch), parse_mode=ParseMode.MARKDOWN)
-
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = str(update.message.chat.id)
-    user_id = update.message.from_user.id
-    chat_admins = await context.bot.get_chat_administrators(chat_id)
-    admin_ids = [admin.user.id for admin in chat_admins]
-
-    if user_id not in admin_ids:
-        await update.message.reply_text("🚫 Only admins can use this command.")
-        return
-
-    message_text = ' '.join(context.args)
-    if not message_text:
-        await update.message.reply_text("Usage: /broadcast Your message here")
-        return
-
-    data = load_users()
-    if chat_id in data:
-        mention_list = [
-            f"[{name}](tg://user?id={uid})" for uid, name in data[chat_id].items()
-        ]
-        for i in range(0, len(mention_list), 10):
-            batch = mention_list[i:i+10]
-            full_msg = f"{message_text}\n\n{' '.join(batch)}"
-            await update.message.reply_text(full_msg, parse_mode=ParseMode.MARKDOWN)
-    else:
-        await update.message.reply_text("No users available to broadcast.")
-
-async def gbroadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    groups = load_groups()
-    is_admin = False
-
-    for group_id in groups:
-        try:
-            admins = await context.bot.get_chat_administrators(group_id)
-            if any(admin.user.id == user_id for admin in admins):
-                is_admin = True
-                break
-        except:
-            continue
-
-    if not is_admin:
-        await update.message.reply_text("❌ You must be an admin in at least one group that added me.")
-        return
-
-    message_text = update.message.text.replace("/gbroadcast", "").strip()
-
-    if update.message.photo:
-        photo = update.message.photo[-1].file_id
-        caption = update.message.caption or message_text or "📢"
-        for group_id in groups:
-            try:
-                await context.bot.send_photo(chat_id=group_id, photo=photo, caption=caption)
-            except:
-                pass
-    elif message_text:
-        for group_id in groups:
-            try:
-                await context.bot.send_message(chat_id=group_id, text=message_text)
-            except:
-                pass
-    else:
-        await update.message.reply_text("Usage: /gbroadcast Your message or photo")
-
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = str(update.message.chat.id)
-    data = load_users()
-    total = len(data.get(chat_id, {}))
-    await update.message.reply_text(f"📊 Total tracked users: {total}")
 
 async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -182,18 +145,24 @@ async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text("🔥 Check out Web3D now!", reply_markup=InlineKeyboardMarkup(keyboard))
 
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.message.chat.id)
+    data = load_users()
+    total = len(data.get(chat_id, {}))
+    await update.message.reply_text(f"📊 Total tracked users: {total}")
+
 # ---------------------------
 # App Setup
 # ---------------------------
 app = ApplicationBuilder().token(BOT_TOKEN).build()
-print("✅ Bot started... waiting for messages.")
+print("✅ Bot is running...")
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("broadcast", broadcast))
-app.add_handler(CommandHandler("gbroadcast", gbroadcast))
-app.add_handler(CommandHandler("botstats", stats))
 app.add_handler(CommandHandler("promo", promo))
-app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_all_messages))
+app.add_handler(CommandHandler("botstats", stats))
+app.add_handler(CommandHandler("registerall", register_all))
+app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), track_users))
+app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), mention_handler))
 app.add_handler(ChatMemberHandler(welcome, ChatMemberHandler.CHAT_MEMBER))
 
 app.run_polling()
