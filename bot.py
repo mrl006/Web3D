@@ -47,7 +47,9 @@ def save_group(chat_id):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Hello! I'm Web3D Tag Member Bot.\nUse #admin or #all in your group to tag people.\nType /promo to get project links."
+        "👋 Hello! I'm Web3D Mentioner.
+Use #admin or #all in your group to tag everyone.
+Type /promo to get project links."
     )
 
 async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -57,17 +59,14 @@ async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(message.chat.id)
     user_id = str(message.from_user.id)
     name = message.from_user.first_name
-    username = message.from_user.username or ""
 
-    # Save user
     data = load_users()
     if chat_id not in data:
         data[chat_id] = {}
-    data[chat_id][user_id] = {"name": name, "username": username}
+    data[chat_id][user_id] = name
     save_users(data)
-
-    # Save group
     save_group(chat_id)
+    print(f"[LOG] Tracked {name} ({user_id}) in group {chat_id}")
 
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = update.chat_member
@@ -75,39 +74,18 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = member.chat.id
         user = member.new_chat_member.user
         save_group(chat_id)
-        data = load_users()
-        if str(chat_id) not in data:
-            data[str(chat_id)] = {}
-        data[str(chat_id)][str(user.id)] = {
-            "name": user.first_name,
-            "username": user.username or ""
-        }
-        save_users(data)
         await context.bot.send_message(
             chat_id=chat_id,
             text=f"👋 Welcome {user.first_name} to Web3D!\nVisit https://web3decision.com to explore."
         )
 
-async def register_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
-    try:
-        admins = await context.bot.get_chat_administrators(chat_id)
-        if user_id not in [admin.user.id for admin in admins]:
-            return await update.message.reply_text("❌ You must be admin to use this.")
-
-        members = await context.bot.get_chat_members_count(chat_id)
-        await update.message.reply_text(f"Bot will register active members after they message. Cannot fetch full list via API.")
-    except:
-        await update.message.reply_text("⚠️ Bot needs admin rights to scan members.")
-
 async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
         return
-
     chat_id = str(message.chat.id)
     text = message.text.lower()
+    print(f"[LOG] Checking message: {text}")
     data = load_users()
 
     if "#admin" in text:
@@ -119,24 +97,54 @@ async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_in_batches(mention_list, message)
 
     elif "#all" in text:
-        mention_list = []
         if chat_id in data:
-            for uid, info in data[chat_id].items():
-                name = info.get("name", "User")
-                username = info.get("username")
-                if username:
-                    mention_list.append(f"@{username}")
-                else:
-                    mention_list.append(f"[{name}](tg://user?id={uid})")
-        if mention_list:
+            mention_list = [
+                f"[{name}](tg://user?id={uid})" for uid, name in data[chat_id].items()
+            ]
             await send_in_batches(mention_list, message)
         else:
-            await message.reply_text("No users to tag yet.")
+            await message.reply_text("No active users to tag yet.")
 
 async def send_in_batches(mentions, message):
+    if not mentions:
+        await message.reply_text("No users found to tag.")
+        return
     for i in range(0, len(mentions), 10):
         batch = mentions[i:i+10]
         await message.reply_text(" ".join(batch), parse_mode=ParseMode.MARKDOWN)
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.message.chat.id)
+    user_id = update.message.from_user.id
+    chat_admins = await context.bot.get_chat_administrators(chat_id)
+    admin_ids = [admin.user.id for admin in chat_admins]
+
+    if user_id not in admin_ids:
+        await update.message.reply_text("🚫 Only admins can use this command.")
+        return
+
+    message_text = ' '.join(context.args)
+    if not message_text:
+        await update.message.reply_text("Usage: /broadcast Your message here")
+        return
+
+    data = load_users()
+    if chat_id in data:
+        mention_list = [
+            f"[{name}](tg://user?id={uid})" for uid, name in data[chat_id].items()
+        ]
+        for i in range(0, len(mention_list), 10):
+            batch = mention_list[i:i+10]
+            full_msg = f"{message_text}\n\n{' '.join(batch)}"
+            await update.message.reply_text(full_msg, parse_mode=ParseMode.MARKDOWN)
+    else:
+        await update.message.reply_text("No users available to broadcast.")
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.message.chat.id)
+    data = load_users()
+    total = len(data.get(chat_id, {}))
+    await update.message.reply_text(f"📊 Total tracked users: {total}")
 
 async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -145,12 +153,6 @@ async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text("🔥 Check out Web3D now!", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = str(update.message.chat.id)
-    data = load_users()
-    total = len(data.get(chat_id, {}))
-    await update.message.reply_text(f"📊 Total tracked users: {total}")
-
 # ---------------------------
 # App Setup
 # ---------------------------
@@ -158,11 +160,11 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 print("✅ Bot is running...")
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("promo", promo))
+app.add_handler(CommandHandler("broadcast", broadcast))
 app.add_handler(CommandHandler("botstats", stats))
-app.add_handler(CommandHandler("registerall", register_all))
-app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), track_users))
-app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), mention_handler))
+app.add_handler(CommandHandler("promo", promo))
+app.add_handler(MessageHandler(filters.ALL, track_users))
+app.add_handler(MessageHandler(filters.ALL, mention_handler))
 app.add_handler(ChatMemberHandler(welcome, ChatMemberHandler.CHAT_MEMBER))
 
 app.run_polling()
