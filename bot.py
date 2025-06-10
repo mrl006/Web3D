@@ -10,7 +10,7 @@ from telegram.ext import (
     filters
 )
 
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"  # Replace this with your actual bot token
+BOT_TOKEN = "8077295783:AAEDLMX9I_FqBV_yKPtfrAiB7xEHuuzdLks"  # Replace this with your actual bot token
 USER_DB = "active_users.json"
 
 # Load active users
