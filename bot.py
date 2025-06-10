@@ -1,6 +1,8 @@
+
 import json
 import os
-from telegram import Update, ParseMode, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -10,22 +12,19 @@ from telegram.ext import (
     filters
 )
 
-BOT_TOKEN = "8077295783:AAEDLMX9I_FqBV_yKPtfrAiB7xEHuuzdLks"  # Replace this with your actual bot token
+BOT_TOKEN = "8077295783:AAEDLMX9I_FqBV_yKPtfrAiB7xEHuuzdLks"
 USER_DB = "active_users.json"
 
-# Load active users
 def load_users():
     if not os.path.exists(USER_DB):
         return {}
     with open(USER_DB, "r") as f:
         return json.load(f)
 
-# Save active users
 def save_users(data):
     with open(USER_DB, "w") as f:
         json.dump(data, f)
 
-# Track users who send messages
 async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     chat_id = str(message.chat.id)
@@ -38,7 +37,6 @@ async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data[chat_id][user_id] = name
     save_users(data)
 
-# Welcome message when a new member joins
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = update.chat_member
     if member.new_chat_member.status == "member":
@@ -49,7 +47,6 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=f"👋 Welcome {user.first_name} to Web3D!\nVisit https://web3decision.com to explore.",
         )
 
-# Mention handler for #admin and #all
 async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     chat_id = str(message.chat.id)
@@ -73,13 +70,11 @@ async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await message.reply_text("No active users to tag yet.")
 
-# Send in batches of 10
 async def send_in_batches(mentions, message):
     for i in range(0, len(mentions), 10):
         batch = mentions[i:i+10]
         await message.reply_text(" ".join(batch), parse_mode=ParseMode.MARKDOWN)
 
-# Broadcast command
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.message.chat.id)
     user_id = update.message.from_user.id
@@ -107,14 +102,12 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("No users available to broadcast.")
 
-# Bot stats command
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.message.chat.id)
     data = load_users()
     total = len(data.get(chat_id, {}))
     await update.message.reply_text(f"📊 Total tracked users: {total}")
 
-# Inline promo command
 async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("Visit Website", url="https://web3decision.com")],
@@ -122,7 +115,6 @@ async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text("🔥 Check out Web3D now!", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# Setup bot
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), track_users))
 app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), mention_handler))
